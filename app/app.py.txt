@@ -1,0 +1,91 @@
+import streamlit as st
+import requests
+import pandas as pd
+import streamlit.components.v1 as components
+import time
+
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(page_title="ScalpMaster Pro Terminal", layout="wide", initial_sidebar_state="expanded")
+
+# --- 2. PREMIUM DARK UI (CSS) ---
+st.markdown("""
+<style>
+    [data-testid="stAppViewContainer"] { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); }
+    .metric-card { 
+        background: rgba(255, 255, 255, 0.05); 
+        padding: 20px; border-radius: 15px; 
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px); text-align: center;
+    }
+    .liquidity-box { padding: 8px; margin: 4px 0; border-radius: 5px; font-family: monospace; font-size: 13px; }
+    .buy-wall { background: rgba(0, 255, 0, 0.1); border-left: 4px solid #00ff00; color: #00ff00; }
+    .sell-wall { background: rgba(255, 0, 0, 0.1); border-left: 4px solid #ff4b4b; color: #ff4b4b; }
+    .price-text { font-size: 28px; font-weight: bold; color: #00ffcc; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- 3. DATA ENGINE ---
+def fetch_pro_intel(sym):
+    # Live Price & 24h Stats
+    ticker = requests.get(f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}").json()
+    # Liquidity Data (Order Book)
+    depth = requests.get(f"https://api.binance.com/api/v3/depth?symbol={sym}&limit=15").json()
+    return ticker, depth
+
+# --- 4. SIDEBAR & AD SLOT ---
+st.sidebar.title("🛠️ Terminal Control")
+symbol = st.sidebar.selectbox("Select Asset", ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"])
+st.sidebar.markdown("---")
+st.sidebar.subheader("📢 Sponsored")
+# Affiliate Ad Slot
+st.sidebar.info("🚀 Join VIP Signals Group\n[Click Here to Join]")
+
+# --- 5. MAIN DASHBOARD ---
+try:
+    ticker_data, depth_data = fetch_pro_intel(symbol)
+    
+    st.title(f"🛡️ {symbol} Elite Dashboard")
+    
+    # Top Row: Metrics
+    m1, m2, m3, m4 = st.columns(4)
+    with m1: st.markdown(f'<div class="metric-card"><small>PRICE</small><br><span class="price-text">${float(ticker_data["lastPrice"]):,.2f}</span></div>', unsafe_allow_html=True)
+    with m2: st.markdown(f'<div class="metric-card"><small>24H HIGH</small><br><span>${float(ticker_data["highPrice"]):,.2f}</span></div>', unsafe_allow_html=True)
+    with m3: st.markdown(f'<div class="metric-card"><small>24H LOW</small><br><span>${float(ticker_data["lowPrice"]):,.2f}</span></div>', unsafe_allow_html=True)
+    with m4: 
+        change = float(ticker_data["priceChangePercent"])
+        color = "#00ff00" if change >= 0 else "#ff4b4b"
+        st.markdown(f'<div class="metric-card"><small>CHANGE</small><br><span style="color:{color};">{change}%</span></div>', unsafe_allow_html=True)
+
+    st.write("")
+
+    # Middle Row: Chart & Liquidity
+    col_left, col_right = st.columns([2.5, 1])
+
+    with col_left:
+        st.subheader("📊 Live Technical Chart")
+        tv_html = f"""
+        <div id="tv_chart"></div>
+        <script src="https://s3.tradingview.com/tv.js"></script>
+        <script>new TradingView.widget({{"width": "100%","height": 500,"symbol": "BINANCE:{symbol}","interval": "1","theme": "dark","style": "1","container_id": "tv_chart"}});</script>
+        """
+        components.html(tv_html, height=520)
+
+    with col_right:
+        st.subheader("🌊 Liquidity Master")
+        bids = pd.DataFrame(depth_data['bids'], columns=['P', 'Q']).astype(float)
+        asks = pd.DataFrame(depth_data['asks'], columns=['P', 'Q']).astype(float)
+        
+        st.write("🟢 **Buy Support**")
+        for i, r in bids.head(6).iterrows():
+            st.markdown(f'<div class="liquidity-box buy-wall">{r["P"]} | Vol: {r["Q"]:.3f}</div>', unsafe_allow_html=True)
+        
+        st.write("🔴 **Sell Resistance**")
+        for i, r in asks.head(6).iterrows():
+            st.markdown(f'<div class="liquidity-box sell-wall">{r["P"]} | Vol: {r["Q"]:.3f}</div>', unsafe_allow_html=True)
+
+except Exception as e:
+    st.error("Exchange Connection Error. Retrying...")
+
+# --- 6. AUTO-REFRESH (Every 1 Minute) ---
+time.sleep(60)
+st.rerun()
